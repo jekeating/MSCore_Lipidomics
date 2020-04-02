@@ -1,0 +1,548 @@
+---
+title: "MainWorkup"
+author: "James Keating"
+date: "3/29/2020"
+output: html_document
+---
+### User inputs (filenames)
+```{r inputs}
+selected_path <- "C:\\Users\\jekea\\OneDrive\\1PostDoc_MSCore\\0Rscripts\\ExampleData"
+lipidsearchexport <- "IPA_vs_MTBE_Lsearch.txt"
+quanbrowserexport <- "integrationresults_Short.xls"
+massaccuracycheck <- "MassAccuracyCheck.xlsx"
+```
+
+### R installations (if not already run)
+```{r installs, include=F}
+# install.packages('tidyverse')
+# install.packages('readxl')
+# install.packages('data.table')
+# install.packages('ggforce')
+#only uncomment if you dont have these installed
+```
+
+### Automated functions
+  Most of these functions are not used in this example as they aren't as easily to walk through each line
+  However they function the same way the code chunks below do
+```{r completed_functions, include=FALSE}
+#These are general functions for lipidomics processing,run them so you can call them later, hidden in output
+lsearch_get_filenames<- function(x){
+  filenames_lsearch <- as.data.frame(read.table(x,sep="\t",fill=T,header=F,
+                                                numerals = 'allow.loss',comment.char ="&",
+                                                stringsAsFactors = F))
+  filenames_lsearch <- as.data.frame(filenames_lsearch[1:(which(filenames_lsearch$V1=="#normalize base:"))-1,])
+  filenames_lsearch<- filenames_lsearch %>% 
+    separate(col=1,sep=':',into=c('Sample','rawname')) %>% 
+    separate(col='rawname',sep=-4,into=c('Filename',NA))
+  filenames_lsearch$Sample<-gsub('#','',filenames_lsearch$Sample)
+  filenames_lsearch<<-filenames_lsearch
+  #variable x should be the lipidsearch filename
+  #Simple function to pull filenames from lipidsearch export
+  #uses the first term to appear in file after the listing of files (normalize base)
+  #then splits the column into groups (how lipidsearch organizes) and raw filenames (with extensions removed)
+  #outputs a dataframe with a row for each sample, one col has the group ID and one has the thermo raw filename
+} #outputs: filenames_lsearch
+lsearch_get_sampledata<- function(x){
+  lipidsearch <- read_tsv(x,comment="#") #import the main data (integrated areas from each lipid/sample)
+  areas<- lipidsearch[str_subset(names(lipidsearch), "^Area\\[")] #\\ is escape character to use single bracket
+  mz <- lipidsearch['CalcMz']
+  rt <- lipidsearch['Rt[c-1]']
+  class <- lipidsearch['Class']
+  lipid <- lipidsearch['LipidIon']
+  lipidareas <- cbind(mz,class,lipid,rt,areas)
+  lipidareas <- separate(lipidareas,col='LipidIon',sep='\\)',into=c(NA,'Adduct'),extra="merge",remove=F)
+  sampledata_lsearch <- separate(lipidareas,col='LipidIon',sep='[\\+\\-]',into=c('Lipid',NA),extra="merge")
+  sampledata_lsearch$Polarity<-sampledata_lsearch$Adduct
+  sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+H', 'Positive',x)})
+  sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+NH4', 'Positive',x)})
+  sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+Na', 'Positive',x)})
+  sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+CH3COO', 'Negative',x)})
+  sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '-H', 'Negative',x)})
+  sampledata_lsearch$Class_and_adduct <- paste(sampledata_lsearch$Class, sampledata_lsearch$Adduct, sep="")
+  sampledata_lsearch$Lipid_and_adduct <- paste(sampledata_lsearch$Lipid, sampledata_lsearch$Adduct, sep="")
+  sampledata_lsearch<<-sampledata_lsearch
+  #variable x should be the lipidsearch filename
+  #Cleans up the initial import from Lipidsearch to only include a few relevant columns before areas for each sample
+  #separates LipidIon column into 2 (e.g., LPC(18:1)+H becomes LPC(18:1) and +H, sep columns for easier filtering)
+  #outputs a dataframe with a row for each sample, a few columns before all areas (main goal of experiment)
+} #outputs sampledata_lsearch
+lsearch_get_internalstandarddata<- function(x){
+  components <- excel_sheets(x)
+  components<-components[1:(length(components)-2)]
+  IS<-read_excel(x,range="A5:E300") #will hlve to increase 300 if more than 290 samples
+  IS <- as.data.frame(IS[1:(which(IS$Filename=="Created By:")-4),])
+  AllIS<- tibble()
+  for (component in components) {
+    #print(component)
+    IS<-read_excel(x,sheet=component,range="A5:E300")
+    IS <- as.data.frame(IS[1:(which(IS$Filename=="Created By:")-4),])
+    IS['Class']<-component
+    AllIS<- bind_rows(AllIS,IS)
+  }
+  IntStdData_lsearch<<-AllIS
+  #x should be the QuanBrowser file name in the correct file path
+  #quanbrowser output is slightly more complicated than most as it is separated in sheets
+  #need to read the sheet names (in components)
+  #it has a couple extra sheets, removed using length filtering
+  #each IS is added row by row in a for loop
+} #outputs IntStdData_lsearch
+
+
+lsearch_normalize_data<- function(lipid,adduct,intstd,dilutionfactor){
+  if(intstd=='dummy'){
+  filtered_SampleData<- as.data.frame(sampledata_lsearch[sampledata_lsearch['Class']==lipid &
+                                                           sampledata_lsearch['Adduct'] == adduct,])
+  filtered_IntStdData <- IntStdData_lsearch[IntStdData_lsearch$Class=='LPC-d7(Proton)',]
+  filtered_IntStdData<-merge(filtered_IntStdData,filenames_lsearch,by='Filename') #add the group from the LipidSearch to get right files
+  filtered_IntStdData$Sample<- gsub('#','Area',filtered_IntStdData$Sample) #match the format of column names in SampleData
+  names(filtered_SampleData)<-gsub('Area','',names(filtered_SampleData))
+  filtered_IntStdData<-filtered_IntStdData[filtered_IntStdData$Area!='NF',] #remove NF rows by selecting from values that do not match string
+  filtered_IntStdData$Area<-as.numeric(filtered_IntStdData$Area)
+  norm_SampleData <- filtered_SampleData
+  realfiles<-filtered_IntStdData[filtered_IntStdData$Area!='NF','Sample'] #only get files that had IS detected
+  for(i in realfiles){ ##repeat for number of files
+    norm_SampleData[i] <- (filtered_SampleData[[i]]/1)*dilutionfactor # normalize to the correct IS by selectivity in code above
+    # print(i)
+  }} else{
+  filtered_SampleData<- as.data.frame(sampledata_lsearch[sampledata_lsearch['Class']==lipid &
+                                                           sampledata_lsearch['Adduct'] == adduct,])
+  filtered_IntStdData <- IntStdData_lsearch[IntStdData_lsearch$Class==intstd,]
+  filtered_IntStdData<-merge(filtered_IntStdData,filenames_lsearch,by='Filename') #add the group from the LipidSearch to get right files
+  filtered_IntStdData$Sample<- gsub('#','Area',filtered_IntStdData$Sample) #match the format of column names in SampleData
+  names(filtered_SampleData)<-gsub('Area','',names(filtered_SampleData))
+  filtered_IntStdData<-filtered_IntStdData[filtered_IntStdData$Area!='NF',] #remove NF rows by selecting from values that do not match string
+  filtered_IntStdData$Area<-as.numeric(filtered_IntStdData$Area)
+  norm_SampleData <- filtered_SampleData
+  realfiles<-filtered_IntStdData[filtered_IntStdData$Area!='NF','Sample'] #only get files that had IS detected
+  for(i in realfiles){ ##repeat for number of files
+    norm_SampleData[i] <- (filtered_SampleData[[i]]/filtered_IntStdData[filtered_IntStdData['Sample'] == i,'Area'])*dilutionfactor # normalize to the correct IS by selectivity in code above
+    # print(i)
+    
+  }}
+  
+  normalized_sampledata_lsearch<-bind_rows(normalized_sampledata_lsearch,norm_SampleData)
+  normalized_sampledata_lsearch <<-distinct(normalized_sampledata_lsearch,Lipid_and_adduct,.keep_all=TRUE)
+  
+}
+
+
+
+lsearch_qcfilter_data<- function(QCfile1,QCfile2,dQCfile1,dQCfile2,lowcutoff,highcutoff){
+  #want to remove features that dont meet QC criteria
+  #pull all features from QCa and b and dQCa and b
+  QCa <- filenames_lsearch[filenames_lsearch$Filename==QCfile1,1]
+ # QCa <- gsub('#','Area',QCa) #match the format of column names in SampleData
+  QCb <- filenames_lsearch[filenames_lsearch$Filename==QCfile2,1]
+ # QCb <- gsub('#','Area',QCb) #match the format of column names in SampleData
+  dQCa <- filenames_lsearch[filenames_lsearch$Filename==dQCfile1,1]
+ # dQCa <- gsub('#','Area',dQCa) #match the format of column names in SampleData
+  dQCb <- filenames_lsearch[filenames_lsearch$Filename==dQCfile2,1]
+ # dQCb <- gsub('#','Area',dQCb) #match the format of column names in SampleData
+  QCa<- normalized_sampledata_lsearch[QCa]
+  QCb <- normalized_sampledata_lsearch[QCb]
+  dQCa <- normalized_sampledata_lsearch[dQCa]
+  dQCb <- normalized_sampledata_lsearch[dQCb]
+  QC_compare <- cbind(normalized_sampledata_lsearch[,1:5],QCa,QCb,dQCa,dQCb)
+  
+  QC_compare['QCAvg']<- rowMeans(QC_compare[,6:7])
+  QC_compare['dQCAvg']<- rowMeans(QC_compare[,8:9])
+  QC_compare['QCvsdQC']<-QC_compare$QCAvg/QC_compare$dQCAvg
+  normalized__and_qcfiltered_sampledata_lsearch<-normalized_sampledata_lsearch[QC_compare$QCvsdQC>lowcutoff & 
+                                                                                 QC_compare$QCvsdQC<highcutoff,]
+  rownames(normalized__and_qcfiltered_sampledata_lsearch)<-NULL
+  normalized__and_qcfiltered_sampledata_lsearch<<-normalized__and_qcfiltered_sampledata_lsearch
+} #outputs normalized__and_qcfiltered_sampledata_lsearch
+lsearch_prepfor_metaboanalyst<- function(any_sampledata){
+  metaboanalyst_input <- as.data.frame(setDT(as.data.frame(t(subset(any_sampledata, 
+                                                                    select=-c(Polarity,CalcMz,Class,Adduct,`Rt[c-1]`,Class_and_adduct,
+                                                                              Lipid_and_adduct)))),
+                                             keep.rownames=T)) #remove unnecessary columns
+  
+  input <- metaboanalyst_input['rn'] #new column to be samples
+  names(input)[1] <- 'Group' ##pre-name this
+  metaboanalyst_input <- as.data.frame(append(metaboanalyst_input, list(C = input), after = 1)) ###adds a column after the first that will become Group column
+  metaboanalyst_input[] <- lapply(metaboanalyst_input[], as.character) #makes everything characters so can easily replace with character
+  metaboanalyst_input[1,1] <- 'Sample' #name correctly
+  metaboanalyst_input[1,2] <- 'Group' #name correctly
+  metaboanalyst_input
+  colnames(metaboanalyst_input) <- metaboanalyst_input[1, ] # make first row into column names
+  metaboanalyst_input <- metaboanalyst_input[-1, ] #delete the first row now that it is in the names
+  colnames(metaboanalyst_input) <- make.unique(names(metaboanalyst_input)) #makes unique names even though they seem unique already
+  
+  metaboanalyst_input$Sample<- gsub('Area','',metaboanalyst_input$Sample) #match the format of column names in SampleData
+  metaboanalyst_input$Group<- gsub('Area','',metaboanalyst_input$Group) #match the format of column names in SampleData
+  metaboanalyst_input[c(-1,-2)] <- lapply(metaboanalyst_input[c(-1,-2)], as.numeric)
+  metaboanalyst_input<<-metaboanalyst_input
+}#does some manual fixing of formats for input into metaboanalyst
+```
+  
+
+### R setup (generic)
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = selected_path)
+library(tidyverse) #has lots of useful packages not in default R
+library(readxl) #allows us to import excel files with multiple pages
+library(data.table) #additional options for dataframes (when turned into datatables)
+library(ggforce) #some useful plotting options especially when working with larger number of plots
+
+cbind_dif <- function(x = list()){
+    # Find max length
+    max_length <- max(unlist(lapply(x, length)))
+    # Set length of each vector as
+    res <- lapply(x, function(x){
+        length(x) <- max_length
+        return(x)
+    })
+    return(as.data.frame(res))
+} ##this is a useful function that allows you to combine columns of different lengths, cbind normally throws error
+
+```
+
+### Pull filenames out of the lipidsearch document
+```{r GetFileNames}
+#This chunk is designed to pull filenames out of the LipidSearch export file, comments will refer to code above it
+filenames_lsearch <-read.table(lipidsearchexport,
+                               sep="\t",fill=T,header=F,
+                               numerals = 'allow.loss',comment.char ="&",
+                               stringsAsFactors = F)
+# Makes an object that has the data from the LipidSearch file. It is a .tsv (tab-separated), denoted by "\t" 
+# see ?read.table for more information on this function (true for all functions in R) and its options
+  #one note is that comment.char is changed because default is # and # is used in the LipidSearch output
+
+
+filenames_lsearch <-as.data.frame(filenames_lsearch[1:(which(filenames_lsearch$V1=="#normalize base:"))-1,])
+#the [] acts as a filter, looks inside filenames_lsearch for row1 to (:) 1 row before  "#normalize base:"
+  #this was done because "#normalize base:" is always the first line after the end of filenames
+  #use the as.data.frame function around it so that we can use separate function next (requires data frames)
+                                                
+filenames_lsearch<- filenames_lsearch %>% 
+  separate(col=1,sep=':',into=c('Sample','rawname')) %>% 
+  separate(col='rawname',sep=-4,into=c('Filename',NA))
+#separates column one into Sample and rawname between ':' character
+  #done to match later, one column is how lipidsearch organizes other column matches how Quanbrowser organizes
+  #second stage of separate just removes the .raw extension (removes four characters back from end)
+
+filenames_lsearch$Sample<-gsub('#','',filenames_lsearch$Sample)
+#this replaces the # with nothing in the Sample (matching LipidSearch) column as it isnt useful
+
+#end up with dataframe that has the filenames run through LipidSearch
+filenames_lsearch
+```
+
+### Get lipids and associated areas from lipidsearch document
+```{r GetLipidSearchData}
+
+lipidsearch <- read_tsv(lipidsearchexport,comment="#") 
+#this time specify # as comment so that filenames aren't included
+#This also means other options less important, as now the shape is consistent
+  #previously inconsistent shape because the first column had extra rows where filenames were
+
+areas<- lipidsearch[str_subset(names(lipidsearch), "^Area\\[")] #\\ is escape character to use single bracket
+#Pulls areas from all data as it has tons of columns to start with. ^ in matching requires string to start there
+mz <- lipidsearch['CalcMz']
+rt <- lipidsearch['Rt[c-1]']
+class <- lipidsearch['Class']
+lipid <- lipidsearch['LipidIon']
+#these all create columns pulling specific column names out of lipidsearch object 
+
+lipidareas <- cbind(mz,class,lipid,rt,areas)
+#Puts the columns made above together
+
+lipidareas <- separate(lipidareas,col='LipidIon',sep='\\)',into=c(NA,'Adduct'),extra="merge",remove=F)
+#Makes a new column called Adduct from LipidIon column
+
+sampledata_lsearch <- separate(lipidareas,col='LipidIon',sep='[\\+\\-]',into=c('Lipid',NA),extra="merge")
+#Create output dataframe by adding columns above and getting rid of the adduct info in the original LipidIon  
+
+sampledata_lsearch$Polarity<-sampledata_lsearch$Adduct
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+H', 'Positive',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+NH4', 'Positive',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+Na', 'Positive',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+CH3COO', 'Negative',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '-H', 'Negative',x)})
+#Brute force creation of a Polarity column, will have some issues if using adducts not described here
+#Starts off with adduct column, creates polarity column as a copy, then goes through and replaces the adduct
+#Replaces with Positive if H, NH4, etc., if need new adducts can make a new line and copy rule structure
+#Not sure this is necessary to have as a column thought it may offer useful filtering 
+
+
+
+sampledata_lsearch$Class_and_adduct <- paste(sampledata_lsearch$Class, sampledata_lsearch$Adduct, sep="")
+#Makes a column of class and adduct together, also may be nice as a filter but not critically important
+
+sampledata_lsearch$Lipid_and_adduct <- paste(sampledata_lsearch$Lipid, sampledata_lsearch$Adduct, sep="")
+#Same rationale as above, full lipid species and related adduct as a column
+
+
+#outputs a dataframe with a row for each sample, a few columns before all areas and some filtering options after
+sampledata_lsearch
+```
+
+
+### Get peak areas from lipid internal standards from Quanbrowser document
+```{r GetIntStdData}
+#quanbrowser output is slightly more complicated than most as it is separated in sheets
+#This requires the readxl package to handle 
+
+
+components <- excel_sheets(quanbrowserexport)
+#makes vector of the IS components (from title of each Excel sheet0)
+
+components<-components[1:(length(components)-2)]
+#Quanbrowser exports 2 extra sheets, remove them here
+
+
+IntStdData_lsearch<- tibble()
+#initialize a dataframe that we will add each set of IS data to (just tags each IS to end as for loop goes)
+
+#for loop will go through each component (Excel sheet)
+for (component in components) {
+  IS<-read_excel(quanbrowserexport,sheet=component,range="A5:E300")
+  #Reads the excel file at a single sheet (specified by component)
+  #The A5:E300 skips some of  the header and footer,works as long as less than 290 samples (can increase)
+
+  IS <- as.data.frame(IS[1:(which(IS$Filename=="Created By:")-4),])
+  #Cuts off 4 rows before 'Created By:' appears as it is last row of data
+
+  IS['Class']<-component
+  #adds column that includes the component name
+  
+  IntStdData_lsearch<- bind_rows(IntStdData_lsearch,IS)
+  #Combine the intialized dataframe with the data pulled inside for loop. Next iteration of for loop will add
+  #to the same dataframe so you end up with all components in 1 dataframe
+}
+
+#outputs Dataframe that has filenames, integrated areas, and lipid internal sandard names
+#some extra columns that go unused, no need to remove them here
+
+IntStdData_lsearch
+```
+
+###Make internal standard selections using .csv export
+```{r choose_lipid_IS, include=FALSE}
+IS_choices <- cbind_dif(list(Endogenous = unique(sampledata_lsearch$Class_and_adduct), 
+               Standards =  unique(IntStdData_lsearch$Class)))
+
+write.table(IS_choices,'IS_choices.csv',row.names=F,col.names=T,sep=",") #writes a csv of IS options
+
+# This exports a csv where you will choose internal standards to match to endogenous lipids
+# You can select 'dummy' to divide all values by 1 rather than an IS, allows you to keep classes that we don't have standards for
+# If there are classes in endogenous data you don't want to include going forward you can delete them from the column
+
+# SAVE THE CSV AS Completed_IS_choices.csv IN THE SAME FOLDER AS THE PATH ORIGINALLY CHOSEN IN THIS DOCUMENT
+  # IF YOU WANT TO USE A DIFFERENT FILENAME THEN CHANGE THE NEXT RCHUNK TO MATCH 
+
+```
+
+```{r normalize_by_csv}
+Completed_IS_choices <- as.data.frame(read.table('Completed_IS_choices.csv',sep=",",fill=T,
+                                                header=T,numerals = 'allow.loss',comment.char ="&",
+                                                stringsAsFactors = F))
+
+
+Completed_IS_choices <- separate(Completed_IS_choices,col='Endogenous',sep='(?=[\\+\\-])',into=c('Endogenous','Adduct'))
+
+
+lsearch_normalize_data<- function(lipid,adduct,intstd,dilutionfactor){
+  if(intstd=='dummy'){
+  filtered_SampleData<- as.data.frame(sampledata_lsearch[sampledata_lsearch['Class']==lipid &
+                                                           sampledata_lsearch['Adduct'] == adduct,])
+  filtered_IntStdData <- IntStdData_lsearch[IntStdData_lsearch$Class=='LPC-d7(Proton)',]
+  filtered_IntStdData<-merge(filtered_IntStdData,filenames_lsearch,by='Filename') #add the group from the LipidSearch to get right files
+  filtered_IntStdData$Sample<- gsub('#','Area',filtered_IntStdData$Sample) #match the format of column names in SampleData
+  names(filtered_SampleData)<-gsub('Area','',names(filtered_SampleData))
+  filtered_IntStdData<-filtered_IntStdData[filtered_IntStdData$Area!='NF',] #remove NF rows by selecting from values that do not match string
+  filtered_IntStdData$Area<-as.numeric(filtered_IntStdData$Area)
+  norm_SampleData <- filtered_SampleData
+  realfiles<-filtered_IntStdData[filtered_IntStdData$Area!='NF','Sample'] #only get files that had IS detected
+  for(i in realfiles){ ##repeat for number of files
+    norm_SampleData[i] <- (filtered_SampleData[[i]]/1)*dilutionfactor # normalize to the correct IS by selectivity in code above
+    # print(i)
+  }} else{
+  filtered_SampleData<- as.data.frame(sampledata_lsearch[sampledata_lsearch['Class']==lipid &
+                                                           sampledata_lsearch['Adduct'] == adduct,])
+  filtered_IntStdData <- IntStdData_lsearch[IntStdData_lsearch$Class==intstd,]
+  filtered_IntStdData<-merge(filtered_IntStdData,filenames_lsearch,by='Filename') #add the group from the LipidSearch to get right files
+  filtered_IntStdData$Sample<- gsub('#','Area',filtered_IntStdData$Sample) #match the format of column names in SampleData
+  names(filtered_SampleData)<-gsub('Area','',names(filtered_SampleData))
+  filtered_IntStdData<-filtered_IntStdData[filtered_IntStdData$Area!='NF',] #remove NF rows by selecting from values that do not match string
+  filtered_IntStdData$Area<-as.numeric(filtered_IntStdData$Area)
+  norm_SampleData <- filtered_SampleData
+  realfiles<-filtered_IntStdData[filtered_IntStdData$Area!='NF','Sample'] #only get files that had IS detected
+  for(i in realfiles){ ##repeat for number of files
+    norm_SampleData[i] <- (filtered_SampleData[[i]]/filtered_IntStdData[filtered_IntStdData['Sample'] == i,'Area'])*dilutionfactor # normalize to the correct IS by selectivity in code above
+    # print(i)
+    
+  }}
+  
+  normalized_sampledata_lsearch<-bind_rows(normalized_sampledata_lsearch,norm_SampleData)
+  normalized_sampledata_lsearch <<-distinct(normalized_sampledata_lsearch,Lipid_and_adduct,.keep_all=TRUE)
+  
+} 
+#This function takes input of lipid, adduct, intstd, and dilutionfactor, all of which will be pulled from the completed csv
+#If you want to change dilution factor can do so below (currently 1.0 as default, would be useful to convert to ug/mL by IS)
+
+normalized_sampledata_lsearch<-tibble()
+#initialze a dataframe that new data will be added to
+
+for (i in as.numeric(row.names(Completed_IS_choices))){
+  #iterates through the rows in the csv
+  lsearch_normalize_data(Completed_IS_choices$Endogenous[i],Completed_IS_choices$Adduct[i],
+                         Completed_IS_choices$Standards[i], 1.0)
+  #uses the function defined above to divide all of a given lipid class areas by the selected internal standards (in .csv)
+}
+
+print('Below is the number of lipids pre-QC filtered')
+dim(normalized_sampledata_lsearch)[1] #outputs the length of the normalized dataframe, where each row is a lipid
+
+```
+
+
+
+
+
+### QC filtering using 2x diluted sample (optional)
+  We didn't have a QC for the IPA vs MTBE data, so will skip
+  There is an example at the end of this document showing QC filtering using the PLC genetic knockout data
+
+
+
+### Prepare a file that can be used in Metaboanalyst (and other softwares)
+Metaboanalyst requires a csv that has a column with sample names, a column with sample groups, and a column for each lipid/feature
+This code chunk converts our dataframe so far (with or without QC filtering) to a Metaboanalyst-friendly file
+```{r FirstPrepForMetaboanalyst}
+#sampledata should be either normalized_sampledata_lsearch or normalized_and_qcfiltered_sampledata_lsearch
+
+any_sampledata <- normalized_sampledata_lsearch
+
+
+metaboanalyst_input <- as.data.frame(setDT(as.data.frame(t(subset(any_sampledata, 
+                                                                  select=-c(Polarity,CalcMz,Class,Adduct,`Rt[c-1]`,Class_and_adduct,
+                                                                            Lipid_and_adduct)))),
+                                           keep.rownames=T))
+#removes columns that would be an issue in metaboanalyst
+
+input <- metaboanalyst_input['rn'] #makes a new column that we will turn into the samples/groupso column
+names(input)[1] <- 'Group' ##pre-name this
+
+
+metaboanalyst_input <- as.data.frame(append(metaboanalyst_input, list(C = input), after = 1)) ###adds a column after the first that will become Group column
+metaboanalyst_input[] <- lapply(metaboanalyst_input[], as.character) #makes everything characters so can easily replace with character
+metaboanalyst_input[1,1] <- 'Sample' #name correctly
+metaboanalyst_input[1,2] <- 'Group' #name correctly
+metaboanalyst_input
+colnames(metaboanalyst_input) <- metaboanalyst_input[1, ] # make first row into column names
+metaboanalyst_input <- metaboanalyst_input[-1, ] #delete the first row now that it is in the names
+colnames(metaboanalyst_input) <- make.unique(names(metaboanalyst_input)) #makes unique names even though they seem unique already
+
+metaboanalyst_input$Sample<- gsub('Area','',metaboanalyst_input$Sample) #removes the word Area from sample column
+metaboanalyst_input$Group<- gsub('Area','',metaboanalyst_input$Group) #removes the word Area from group column
+metaboanalyst_input[c(-1,-2)] <- lapply(metaboanalyst_input[c(-1,-2)], as.numeric) #converts all but the first two columns into numerics (otherwise exports as characters with "")
+
+
+
+
+```
+
+
+```{r MetaboAnalyst_Prep_ChangeFilenames, include=FALSE}
+
+metaboanalyst_input<-merge(metaboanalyst_input,filenames_lsearch,by='Sample') #Adds the real filenames from filenames_lsearch dataframe
+
+metaboanalyst_input$Sample<-metaboanalyst_input$Filename #replace Sample with Filename column
+metaboanalyst_input<-subset(metaboanalyst_input,select=-c(Filename)) #remove the Filename column (which now has data stored in Sample column
+
+
+ metaboanalyst_input <- metaboanalyst_input[-c(which(metaboanalyst_input$Sample == 'blank_pre1')), ] #remove first blank from this dataset, gradient equilibrating
+  #not part of standard processing
+
+
+# #metaboanalyst_input$Filename <- substr(metaboanalyst_input$Filename,8,11) ###This was used for the BALF files because they included the date in each file
+                                                                              ### It kept only character 8-11 (e.g., 191104_Vr17.raw becomes Vr17)
+
+
+
+#Now go through the group column and replace the LipidSearch names (like [c-1]) with the real group names (depends on experiment)
+#A bit ugly but each group needs two lines, the . inside [c-.] is a wildcard, need to account for double digit numerals as well if >10 samples in a group
+
+metaboanalyst_input$Group <- gsub('\\[c-.]','QC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[c-..]','QC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s1-.]','PartQC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s1-..]','PartQC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s2-.]','dilPartQC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s2-..]','dilPartQC',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s3-.]','Fibroblasts',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s3-..]','Fibroblasts',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s4-.]','PLC_Null',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s4-..]','PLC_Null',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s5-.]','PLC_Rescue',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s5-..]','PLC_Rescue',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s6-.]','Blanks',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s6-..]','Blanks',metaboanalyst_input$Group)
+
+#metaboanalyst_input
+
+write.table(metaboanalyst_input,'PLC_metaboanalyst_input.csv',row.names=F,col.names=T,sep=",")
+#this is the final output, can name something else
+
+
+
+```
+
+
+
+
+
+### Example of QC filtering using 2x diluted sample
+```{r QC_filter_example, warning=F}
+#There were no QC samples in the IPA vs MTBE data so example uses the PLC data
+#
+
+lipidsearchfilename_PLC <- 'PLC_alignment.txt' #export of Lipid Ions-Validated Results
+quanbrowserfilename_PLC <-  'PLC_quanbrowserresults_Short.xls' #export of QuanBrowser internal standard values
+
+lsearch_get_filenames(lipidsearchfilename_PLC)
+lsearch_get_sampledata(lipidsearchfilename_PLC)
+lsearch_get_internalstandarddata(quanbrowserfilename_PLC)
+Completed_IS_choices <- as.data.frame(read.table('Completed_IS_choices_PLC.csv',sep=",",fill=T,
+                                                header=T,numerals = 'allow.loss',comment.char ="&",
+                                                stringsAsFactors = F)) #NOTE USING PREVIOUSLY COMPLETED _PLC ISCHOICES, NOT SAME FILE AS BEFORE
+Completed_IS_choices <- separate(Completed_IS_choices,col='Endogenous',sep='(?=[\\+\\-])',into=c('Endogenous','Adduct'))
+normalized_sampledata_lsearch<-tibble()
+for (i in as.numeric(row.names(Completed_IS_choices))){
+  lsearch_normalize_data(Completed_IS_choices$Endogenous[i],Completed_IS_choices$Adduct[i],
+                         Completed_IS_choices$Standards[i], 1.0)
+}
+
+QCfile1 <-"partQC"
+QCfile2 <-"partQC2"
+dQCfile1 <-"dQC"
+dQCfile2 <-"dQC2"
+lowcutoff <- 1.5
+highcutoff <- 3.5
+
+#want to remove features that dont meet QC criteria
+#pull all features from QCa and b and dQCa and b
+QCa <- filenames_lsearch[filenames_lsearch$Filename==QCfile1,1]
+QCb <- filenames_lsearch[filenames_lsearch$Filename==QCfile2,1]
+dQCa <- filenames_lsearch[filenames_lsearch$Filename==dQCfile1,1]
+dQCb <- filenames_lsearch[filenames_lsearch$Filename==dQCfile2,1]
+QCa<- normalized_sampledata_lsearch[QCa]
+QCb <- normalized_sampledata_lsearch[QCb]
+dQCa <- normalized_sampledata_lsearch[dQCa]
+dQCb <- normalized_sampledata_lsearch[dQCb]
+QC_compare <- cbind(normalized_sampledata_lsearch[,1:5],QCa,QCb,dQCa,dQCb)
+
+QC_compare['QCAvg']<- rowMeans(QC_compare[,6:7])
+QC_compare['dQCAvg']<- rowMeans(QC_compare[,8:9])
+QC_compare['QCvsdQC']<-QC_compare$QCAvg/QC_compare$dQCAvg
+normalized__and_qcfiltered_sampledata_lsearch<-normalized_sampledata_lsearch[QC_compare$QCvsdQC>lowcutoff &
+                                                                               QC_compare$QCvsdQC<highcutoff,]
+rownames(normalized__and_qcfiltered_sampledata_lsearch)<-NULL
+
+#you can ignore the red text here, listing how the columns were imported
+
+print('below is the number of lipids removed based on the user-defined QC tolerance')
+dim(normalized_sampledata_lsearch)[1] - dim(normalized__and_qcfiltered_sampledata_lsearch)[1]
+```
