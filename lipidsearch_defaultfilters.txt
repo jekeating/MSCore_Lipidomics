@@ -1,0 +1,32 @@
+Rej<> 1 AND {MainGrade[c]}.in("A", "B", "C") AND
+((Class = "Cer " AND MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "Hex1Cer" AND (MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "Hex2Cer" AND (MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "Hex3Cer" AND (MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "SPH" AND (MainIon = "+H" OR MainIon = "+H H2O")) OR
+(Class = "ChE " AND MainIon = "+NH4") OR
+(Class = "D7ChE" AND MainIon = "+NH4") OR
+(Class = "LSM" AND MainIon = "+H") OR
+(Class = "SM" AND MainIon = "+H") OR
+(Class = "MG" AND MainIon = "+H") OR
+(Class = "FA" AND MainIon = "-H") OR
+Rej<> 1 AND {MainGrade[c]}.in("A", "B") AND
+((Class = "Co" AND (MainIon = "+NH4" OR MainIon = "+H")) OR
+(Class = "DG" AND (MainIon = "+NH4" OR MainIon = "+Na")) OR
+(Class = "TG" AND MainIon = "+NH4") OR
+(Class = "AcCa " AND MainIon = "-H") OR
+(Class = "CL" AND MainIon = "-H") OR
+(Class = "DLCL" AND MainIon = "-H") OR
+(Class = "MLCL" AND MainIon = "-H") OR
+(Class = "LPA" AND MainIon = "-H") OR
+(Class = "PA" AND MainIon = "-H") OR
+(Class = "LPC" AND (MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "PC" AND (MainIon = "+H" OR MainIon = "+CH3COO")) OR
+(Class = "LPE" AND (MainIon = "+H" OR MainIon = "-H")) OR
+(Class = "PE" AND (MainIon = "+H" OR MainIon = "-H")) OR
+(Class = "LPG" AND (MainIon = "+NH4" OR MainIon = "-H")) OR
+(Class = "PG" AND (MainIon = "+NH4" OR MainIon = "-H")) OR
+(Class = "LPI" AND (MainIon = "+NH4" OR MainIon = "-H")) OR
+(Class = "PI" AND (MainIon = "+NH4" OR MainIon = "-H")) OR
+(Class = "LPS" AND (MainIon = "+H" OR MainIon = "-H")) OR
+(Class = "PS" AND (MainIon = "+H" OR MainIon = "-H")))
