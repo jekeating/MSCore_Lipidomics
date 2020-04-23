@@ -2,7 +2,7 @@
 
 This is designed to take integrated peak areas of isotopically labeled internal standards (calculated by QuanBrowser) and use them to normalize the integrated peak areas of endogenous lipid species (calculated by LipidSearch).
 
-Instructions:
+#Instructions:
 Download the repository as a zip file, extract and move to desktop
 
 1. Mass accuracy check - load your data in QualBrowser and apply the MassAccuracyCheck_Equisplash.lyt layout  
