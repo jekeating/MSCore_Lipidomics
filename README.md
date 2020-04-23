@@ -7,11 +7,13 @@ Download the repository as a zip file, extract and move to desktop
 
 ### 1. Mass accuracy check - load your data in QualBrowser and apply the MassAccuracyCheck_Equisplash.lyt layout  
   a. If the MS2 blocks show no data change the filter to the closest mass (same polarity), sometimes the DDA mass is not exactly the same as the one in the layout  
+    
   b. Fill out the MassAccuracyCheck.xlsx document, make processing decisions based on the mass error in each polarity at the start and end 
       of the queue (either reinject or post-run correct)
       
 ### 2. Get internal standard peak areas in QuanBrowser using the Default_20min_100mmC18.pmd processing method  
   a. Review peak integration, manually reintegrate only if absolutely necessary  
+    
   b. Export to short excel report (example is given as integrationresults_Short.xlsx (IPAvsMTBE data) and
       PLC_quanbrowserresults_Short.xlsx (PLC knockout data
  
