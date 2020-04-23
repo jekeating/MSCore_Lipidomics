@@ -2,23 +2,23 @@
 
 This is designed to take integrated peak areas of isotopically labeled internal standards (calculated by QuanBrowser) and use them to normalize the integrated peak areas of endogenous lipid species (calculated by LipidSearch).
 
-#Instructions:
+## Instructions:
 Download the repository as a zip file, extract and move to desktop
 
-1. Mass accuracy check - load your data in QualBrowser and apply the MassAccuracyCheck_Equisplash.lyt layout  
+### 1. Mass accuracy check - load your data in QualBrowser and apply the MassAccuracyCheck_Equisplash.lyt layout  
   a. If the MS2 blocks show no data change the filter to the closest mass (same polarity), sometimes the DDA mass is not exactly the same as the one in the layout  
   b. Fill out the MassAccuracyCheck.xlsx document, make processing decisions based on the mass error in each polarity at the start and end 
       of the queue (either reinject or post-run correct)
       
-2. Get internal standard peak areas in QuanBrowser using the Default_20min_100mmC18.pmd processing method  
+### 2. Get internal standard peak areas in QuanBrowser using the Default_20min_100mmC18.pmd processing method  
   a. Review peak integration, manually reintegrate only if absolutely necessary  
   b. Export to short excel report (example is given as integrationresults_Short.xlsx (IPAvsMTBE data) and
       PLC_quanbrowserresults_Short.xlsx (PLC knockout data
  
-3. Generate LipidSearch export document as Lipid Ion - Validated Ions (example given as IPA_vs_MTBE_Lsearch.txt and PLC_alignment.txt)
+### 3. Generate LipidSearch export document as Lipid Ion - Validated Ions (example given as IPA_vs_MTBE_Lsearch.txt and PLC_alignment.txt)
   a. Follow video instructions under MSCore Microsoft Teams for help using LipidSearch
   
-4. Open MainWorkupScript.Rmd in Rstudio and work your way down the individual code chunks (using green play button)  
+### 4. Open MainWorkupScript.Rmd in Rstudio and work your way down the individual code chunks (using green play button)  
   a. Locations for user input are all in the first code chunk, briefly they are:  
     i. Quanbrowser file names    
     ii. Lipidsearch file name  
