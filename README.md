@@ -21,11 +21,12 @@ Download the repository as a zip file, extract and move to desktop
   a. Follow video instructions under MSCore Microsoft Teams for help using LipidSearch
   
 ### 4. Open MainWorkupScript.Rmd in Rstudio and work your way down the individual code chunks (using green play button)  
-  a. Locations for user input are all in the first code chunk, briefly they are:  
+  a. Locations for user input are all in the first code chunk, briefly they are:    
     i. Quanbrowser file names    
     ii. Lipidsearch file name  
     iii. Mass accuracy check file name     
     iv. File path for the files above  
+      
   b. The only other user input (if not visualizing data in R) is the internal standards selection spreadsheet  
     i. A code chunk will export IS_choices.csv to the directory originally chosen  
     ii. Fill this out and resave as Completed_IS_choices.csv (an example of the completed version is in the example data folder)  
@@ -33,6 +34,7 @@ Download the repository as a zip file, extract and move to desktop
         areas by 1 (no normalization)  
     iv. If you dont have an internal standard for a class and don't want to use the dummy variable you can just delete it from first 
         column, lipids from that class will not be included in final outputs  
+          
   c.The script will output a .csv that can be visualized in Metaboanalyst.ca or in processing software of choice 
     (example given as PLC_metaboanalyst_input.csv)
     
