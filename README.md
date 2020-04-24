@@ -21,11 +21,13 @@ Download the repository as a zip file, extract and move to desktop
   a. Follow video instructions under MSCore Microsoft Teams for help using LipidSearch
   
 ### 4. Open MainWorkupScript.Rmd in Rstudio and work your way down the individual code chunks (using green play button)  
-  a. Locations for user input are all in the first code chunk, briefly they are:    
+  a. Locations for user input are mostly in the first code chunk, briefly they are:    
     i. Quanbrowser file names    
     ii. Lipidsearch file name  
     iii. Mass accuracy check file name     
     iv. File path for the files above  
+      
+    v. Convert lipidsearch group ID's to real sample groups (e.g., s-1 to 'single stage MTBE extraction, code chunk starts @ line 452)
       
   b. The only other user input (if not visualizing data in R) is the internal standards selection spreadsheet  
     i. A code chunk will export IS_choices.csv to the directory originally chosen  
