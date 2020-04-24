@@ -27,7 +27,7 @@ Download the repository as a zip file, extract and move to desktop
     iii. Mass accuracy check file name     
     iv. File path for the files above  
       
-    v. Convert lipidsearch group ID's to real sample groups (e.g., s-1 to 'single stage MTBE extraction, code chunk starts @ line 452)
+   v. Convert lipidsearch group ID's to real sample groups (e.g., s-1 to 'single stage MTBE extraction, code chunk starts @ line 452)
       
   b. The only other user input (if not visualizing data in R) is the internal standards selection spreadsheet  
     i. A code chunk will export IS_choices.csv to the directory originally chosen  
