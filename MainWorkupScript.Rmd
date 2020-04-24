@@ -6,8 +6,8 @@ output: html_document
 ---
 ### User inputs (filenames)
 ```{r inputs}
-selected_path <- "C:\\Users\\jekea\\OneDrive\\1PostDoc_MSCore\\0Rscripts\\ExampleData"
-lipidsearchexport <- "IPA_vs_MTBE_Lsearch.txt"
+selected_path <- "C:\\Users\\James\\Desktop\\MSCore_Lipidomics-master\\ExampleData"
+lipidsearchexport <- "demo_IPA_MTBE.txt"
 quanbrowserexport <- "integrationresults_Short.xls"
 massaccuracycheck <- "MassAccuracyCheck.xlsx"
 ```
@@ -42,6 +42,7 @@ lsearch_get_filenames<- function(x){
   #then splits the column into groups (how lipidsearch organizes) and raw filenames (with extensions removed)
   #outputs a dataframe with a row for each sample, one col has the group ID and one has the thermo raw filename
 } #outputs: filenames_lsearch
+
 lsearch_get_sampledata<- function(x){
   lipidsearch <- read_tsv(x,comment="#") #import the main data (integrated areas from each lipid/sample)
   areas<- lipidsearch[str_subset(names(lipidsearch), "^Area\\[")] #\\ is escape character to use single bracket
@@ -258,9 +259,11 @@ sampledata_lsearch <- separate(lipidareas,col='LipidIon',sep='[\\+\\-]',into=c('
 sampledata_lsearch$Polarity<-sampledata_lsearch$Adduct
 sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+H', 'Positive',x)})
 sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+NH4', 'Positive',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+H-H2O', 'Positive',x)})
 sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+Na', 'Positive',x)})
 sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '+CH3COO', 'Negative',x)})
 sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '-H', 'Negative',x)})
+sampledata_lsearch$Polarity <- lapply(sampledata_lsearch$Polarity, function(x) {ifelse(x == '-2H', 'Negative',x)})
 #Brute force creation of a Polarity column, will have some issues if using adducts not described here
 #Starts off with adduct column, creates polarity column as a copy, then goes through and replaces the adduct
 #Replaces with Positive if H, NH4, etc., if need new adducts can make a new line and copy rule structure
@@ -395,7 +398,7 @@ for (i in as.numeric(row.names(Completed_IS_choices))){
 
 print('Below is the number of lipids pre-QC filtered')
 dim(normalized_sampledata_lsearch)[1] #outputs the length of the normalized dataframe, where each row is a lipid
-
+normalized_sampledata_lsearch
 ```
 
 
@@ -454,39 +457,36 @@ metaboanalyst_input$Sample<-metaboanalyst_input$Filename #replace Sample with Fi
 metaboanalyst_input<-subset(metaboanalyst_input,select=-c(Filename)) #remove the Filename column (which now has data stored in Sample column
 
 
- metaboanalyst_input <- metaboanalyst_input[-c(which(metaboanalyst_input$Sample == 'blank_pre1')), ] #remove first blank from this dataset, gradient equilibrating
-  #not part of standard processing
-
-
-# #metaboanalyst_input$Filename <- substr(metaboanalyst_input$Filename,8,11) ###This was used for the BALF files because they included the date in each file
-                                                                              ### It kept only character 8-11 (e.g., 191104_Vr17.raw becomes Vr17)
-
-
 
 #Now go through the group column and replace the LipidSearch names (like [c-1]) with the real group names (depends on experiment)
 #A bit ugly but each group needs two lines, the . inside [c-.] is a wildcard, need to account for double digit numerals as well if >10 samples in a group
 
-metaboanalyst_input$Group <- gsub('\\[c-.]','QC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[c-..]','QC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s1-.]','PartQC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s1-..]','PartQC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s2-.]','dilPartQC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s2-..]','dilPartQC',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s3-.]','Fibroblasts',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s3-..]','Fibroblasts',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s4-.]','PLC_Null',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s4-..]','PLC_Null',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s5-.]','PLC_Rescue',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s5-..]','PLC_Rescue',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s6-.]','Blanks',metaboanalyst_input$Group)
-metaboanalyst_input$Group <- gsub('\\[s6-..]','Blanks',metaboanalyst_input$Group)
-
+metaboanalyst_input$Group <- gsub('\\[c-.]','solventblanks',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[c-..]','solventblanks',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s1-.]','MTBE_2x_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s1-..]','MTBE_2x_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s2-.]','MTBE_2x_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s2-..]','MTBE_2x_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s3-.]','MTBE_2x_Blank',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s3-..]','MTBE_2x_Blank',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s4-.]','MTBE_1x_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s4-..]','MTBE_1x_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s5-.]','MTBE_1x_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s5-..]','MTBE_1x_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s6-.]','MTBE_1x_Blank',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s6-..]','MTBE_1x_Blank',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s7-.]','IPA_ext_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s7-..]','IPA_ext_30RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s8-.]','IPA_ext_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s8-..]','IPA_ext_100RF',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s9-.]','IPA_ext_Blank',metaboanalyst_input$Group)
+metaboanalyst_input$Group <- gsub('\\[s9-..]','IPA_ext_Blank',metaboanalyst_input$Group)
 #metaboanalyst_input
 
-write.table(metaboanalyst_input,'PLC_metaboanalyst_input.csv',row.names=F,col.names=T,sep=",")
+write.table(metaboanalyst_input,'IPA_vs_MTBE_metaboanalyst_input.csv',row.names=F,col.names=T,sep=",")
 #this is the final output, can name something else
 
-
+metaboanalyst_input
 
 ```
 
@@ -505,9 +505,14 @@ quanbrowserfilename_PLC <-  'PLC_quanbrowserresults_Short.xls' #export of QuanBr
 lsearch_get_filenames(lipidsearchfilename_PLC)
 lsearch_get_sampledata(lipidsearchfilename_PLC)
 lsearch_get_internalstandarddata(quanbrowserfilename_PLC)
+
+
 Completed_IS_choices <- as.data.frame(read.table('Completed_IS_choices_PLC.csv',sep=",",fill=T,
                                                 header=T,numerals = 'allow.loss',comment.char ="&",
                                                 stringsAsFactors = F)) #NOTE USING PREVIOUSLY COMPLETED _PLC ISCHOICES, NOT SAME FILE AS BEFORE
+
+
+
 Completed_IS_choices <- separate(Completed_IS_choices,col='Endogenous',sep='(?=[\\+\\-])',into=c('Endogenous','Adduct'))
 normalized_sampledata_lsearch<-tibble()
 for (i in as.numeric(row.names(Completed_IS_choices))){
